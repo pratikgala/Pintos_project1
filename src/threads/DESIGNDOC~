@@ -1,0 +1,619 @@
++--------------------+
+			|        CS 451      |
+			| PROJECT 1: THREADS |
+			|   DESIGN DOCUMENT  |
+			+--------------------+
+				   
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Ankita Parekh <ankip16@ccs.neu.edu>
+Pratik Gala <gala.p@ccs.neu.edu>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+        CONTEXT SWITCHING
+        =================
+Print a backtrace before each call to switch_thread and after it returns:
+
+This is the intial backtrace when the program starts:
+Here current running thread is main
+Breakpoint 1, schedule () at ../../threads/thread.c:567
+567	    prev = switch_threads (cur, next);
+(gdb) bt
+#0  schedule () at ../../threads/thread.c:567
+#1  0xc0021141 in thread_block () at ../../threads/thread.c:228
+#2  0xc002253c in sema_down (sema=0xc000ef7c) at ../../threads/synch.c:72
+#3  0xc0020c2f in thread_start () at ../../threads/thread.c:117
+#4  0xc002065b in main () at ../../threads/init.c:119
+(gdb) print running_thread()->name
+$1 = "main", '\000' <repeats 11 times>
+
+Here current running thread is idle:
+Breakpoint 1, schedule () at ../../threads/thread.c:567
+567	    prev = switch_threads (cur, next);
+(gdb) bt
+#0  schedule () at ../../threads/thread.c:567
+#1  0xc0021141 in thread_block () at ../../threads/thread.c:228
+#2  0xc0021168 in idle (idle_started_=0xc000ef7c) at ../../threads/thread.c:407
+#3  0xc00210be in kernel_thread (function=0xc0021145 <idle>, aux=0xc000ef7c)
+    at ../../threads/thread.c:432
+#4  0x00000000 in ?? ()
+(gdb) print running_thread()->name
+$2 = "idle", '\000' <repeats 11 times>
+
+The backtrace when switching from idle to first yielder
+Breakpoint 1, schedule () at ../../threads/thread.c:567
+567	    prev = switch_threads (cur, next);
+(gdb) bt
+#0  schedule () at ../../threads/thread.c:567
+#1  0xc0020fe2 in thread_yield () at ../../threads/thread.c:321
+#2  0xc002cb6c in yielder () at ../../tests/threads/my-yielder.c:7
+#3  0xc00210be in kernel_thread (function=0xc002cb64 <yielder>, aux=0x0)
+    at ../../threads/thread.c:432
+#4  0x00000000 in ?? ()
+(gdb) print running_thread()->name
+$9 = "first yielder\000\000"
+
+
+The backtrace when switching from first yielder to second yielder
+
+Breakpoint 1, schedule () at ../../threads/thread.c:567
+567	    prev = switch_threads (cur, next);
+(gdb) bt
+#0  schedule () at ../../threads/thread.c:567
+#1  0xc0020fe2 in thread_yield () at ../../threads/thread.c:321
+#2  0xc002cb6c in yielder () at ../../tests/threads/my-yielder.c:7
+#3  0xc00210be in kernel_thread (function=0xc002cb64 <yielder>, aux=0x0)
+    at ../../threads/thread.c:432
+#4  0x00000000 in ?? ()
+(gdb) print running_thread()->name
+$4 = "second yielder\000"
+
+
+
+The backtrace when switching from second yielder back to main
+
+schedule () at ../../threads/thread.c:568
+568	  thread_schedule_tail (prev);
+(gdb) bt
+#0  schedule () at ../../threads/thread.c:568
+#1  0xc0020fe2 in thread_yield () at ../../threads/thread.c:321
+#2  0xc002cbd8 in rtt () at ../../tests/threads/my-yielder.c:15
+#3  0xc002a28a in run_test (name=0xc0007d42 "rtt")
+    at ../../tests/threads/tests.c:57
+#4  0xc00201b3 in run_task (argv=0xc0034680) at ../../threads/init.c:290
+#5  0xc002070d in run_actions (argv=<optimized out>)
+    at ../../threads/init.c:340
+#6  main () at ../../threads/init.c:133
+(gdb) print running_thread()->name
+$5 = "main", '\000' <repeats 11 times>
+(gdb) n
+569	}
+(gdb) n
+thread_yield () at ../../threads/thread.c:322
+322	  intr_set_level (old_level);
+(gdb) print running_thread()->name
+$6 = "main", '\000' <repeats 11 times>
+
+
+
+
+>> C1: When "first yielder" finishes, which thread deletes its stack? Why?
+
+	When the "first yielder" finishes the next function which is called 
+	is schedule(). Thes schedule then calls the "second yielder" to run.
+	So the running thread now is the "second yielder". The "second yielder"
+	calls the thread_schedule_tail after switching the "first yielder" thread
+	is removed. If the "first yielder" tried to deletes its stack is wouldn't have 
+	been able to complete its process beacuse it wouldn't have a stack.
+	Hence the "second yielder" thread deletes the "first yielder" thread stack.
+
+
+>> C2: Give the backtrace of the kernel stack of a thread suspended
+>> by a timer interrupt.
+
+In the following below, I have provided the stack trace of the thread 
+suspended by the timer interrupt. I have placed break points at function
+thread_yield() in the thread.c and at tick++ in the timer_interrupt function
+of timer.c.
+
+In the following the tid=1 that is the "main" is the running thread, tid=2
+is "idle" thread that is been blocked, The "first yielder" is the thread in 
+the ready state. Each thread in given a time slice (or time quantum)
+	-TIME_SLICE (=4) ticks by default
+If the time slice expires, the current thread is moved to the end of the 
+ready queue. 
+
+The next thread in the ready queue is scheduled. No priority: All the threads
+are treated equally.
+
+Breakpoint 2, timer_interrupt (args=0xc000ecc8) at ../../devices/timer.c:173
+173       ticks++;
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc000e000 {tid = 1, status = THREAD_RUNNING,
+  name = "main", '\000' <repeats 11 times>,
+  stack = 0xc000eebc "p▒\002▒U▒\002▒\024▒", priority = 31, allelem = {
+    prev = 0xc00347b0, next = 0xc0103020}, elem = {prev = 0xc00347a0,
+    next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #1: 0xc0103000 {tid = 2, status = THREAD_BLOCKED,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc000e020, next = 0xc0104020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #2: 0xc0104000 {tid = 3, status = THREAD_READY,
+  name = "first yielder\000\000", stack = 0xc0104fd4 "", priority = 31,
+  allelem = {prev = 0xc0103020, next = 0xc00347b8}, elem = {prev = 0xc00347a0,
+    next = 0xc00347a8}, magic = 3446325067}
+(gdb) c
+Continuing.
+
+Breakpoint 1, thread_yield () at ../../threads/thread.c:311
+311     {
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc000e000 {tid = 1, status = THREAD_RUNNING,
+  name = "main", '\000' <repeats 11 times>,
+  stack = 0xc000eebc "p▒\002▒U▒\002▒\024▒", priority = 31, allelem = {
+    prev = 0xc00347b0, next = 0xc0103020}, elem = {prev = 0xc00347a0,
+    next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #1: 0xc0103000 {tid = 2, status = THREAD_BLOCKED,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc000e020, next = 0xc0104020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #2: 0xc0104000 {tid = 3, status = THREAD_READY,
+  name = "first yielder\000\000", stack = 0xc0104fd4 "", priority = 31,
+  allelem = {prev = 0xc0103020, next = 0xc00347b8}, elem = {prev = 0xc00347a0,
+    next = 0xc00347a8}, magic = 3446325067}
+(gdb) c
+Continuing.
+
+Below the "main" thread is remove from the running state, the kernel stack
+here for the "main" thread is removed and the running thread now becomes the 
+"first yielder". The kernel stack now contains the details about the "first yielder"
+ its tid, status, priority and so forth.
+
+Breakpoint 1, thread_yield () at ../../threads/thread.c:311
+311     {
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc000e000 {tid = 1, status = THREAD_READY,
+  name = "main", '\000' <repeats 11 times>, stack = 0xc000ec20 "▒▒",
+  priority = 31, allelem = {prev = 0xc00347b0, next = 0xc0103020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #1: 0xc0103000 {tid = 2, status = THREAD_BLOCKED,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc000e020, next = 0xc0104020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #2: 0xc0104000 {tid = 3, status = THREAD_RUNNING,
+  name = "first yielder\000\000", stack = 0xc0104fd4 "", priority = 31,
+  allelem = {prev = 0xc0103020, next = 0xc00347b8}, elem = {prev = 0xc00347a0,
+    next = 0xc000e028}, magic = 3446325067}
+(gdb) c
+Continuing.
+
+Breakpoint 2, timer_interrupt (args=0xc000edf8) at ../../devices/timer.c:173
+173       ticks++;
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc000e000 {tid = 1, status = THREAD_RUNNING,
+  name = "main", '\000' <repeats 11 times>, stack = 0xc000ec20 "▒▒",
+  priority = 31, allelem = {prev = 0xc00347b0, next = 0xc0103020}, elem = {
+    prev = 0xc00347a0, next = 0xc0104028}, magic = 3446325067}
+pintos-debug: dumplist #1: 0xc0103000 {tid = 2, status = THREAD_BLOCKED,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc000e020, next = 0xc0104020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #2: 0xc0104000 {tid = 3, status = THREAD_READY,
+  name = "first yielder\000\000", stack = 0xc0104f44 "", priority = 31,
+  allelem = {prev = 0xc0103020, next = 0xc00347b8}, elem = {prev = 0xc00347a0,
+    next = 0xc00347a8}, magic = 3446325067}
+(gdb) c
+Continuing.
+
+Breakpoint 1, thread_yield () at ../../threads/thread.c:311
+311     {
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc000e000 {tid = 1, status = THREAD_RUNNING,
+  name = "main", '\000' <repeats 11 times>, stack = 0xc000ec20 "▒▒",
+  priority = 31, allelem = {prev = 0xc00347b0, next = 0xc0103020}, elem = {
+    prev = 0xc00347a0, next = 0xc0104028}, magic = 3446325067}
+pintos-debug: dumplist #1: 0xc0103000 {tid = 2, status = THREAD_BLOCKED,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc000e020, next = 0xc0104020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #2: 0xc0104000 {tid = 3, status = THREAD_READY,
+  name = "first yielder\000\000", stack = 0xc0104f44 "", priority = 31,
+  allelem = {prev = 0xc0103020, next = 0xc0105020}, elem = {prev = 0xc00347a0,
+    next = 0xc0105028}, magic = 3446325067}
+pintos-debug: dumplist #3: 0xc0105000 {tid = 4, status = THREAD_READY,
+  name = "second yielder\000", stack = 0xc0105fd4 "", priority = 31,
+  allelem = {prev = 0xc0104020, next = 0xc00347b8}, elem = {prev = 0xc0104028,
+    next = 0xc00347a8}, magic = 3446325067}
+(gdb) c
+Continuing.
+
+After the TIME_SLICE the "second yielder" is scheduled to running state and the
+"first yielder"s stack is destroyed by the "second yielder". 
+
+Breakpoint 2, timer_interrupt (args=0xc0105f50) at ../../devices/timer.c:173
+173       ticks++;
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc000e000 {tid = 1, status = THREAD_READY,
+  name = "main", '\000' <repeats 11 times>, stack = 0xc000eebc "\036▒\002▒",
+  priority = 31, allelem = {prev = 0xc00347b0, next = 0xc0103020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #1: 0xc0103000 {tid = 2, status = THREAD_BLOCKED,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc000e020, next = 0xc0105020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #2: 0xc0105000 {tid = 4, status = THREAD_RUNNING,
+  name = "second yielder\000", stack = 0xc0105fd4 "", priority = 31,
+  allelem = {prev = 0xc0103020, next = 0xc00347b8}, elem = {prev = 0xc00347a0,
+    next = 0xc000e028}, magic = 3446325067}
+(gdb) c
+Continuing.
+
+Breakpoint 1, thread_yield () at ../../threads/thread.c:311
+311     {
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc000e000 {tid = 1, status = THREAD_READY,
+  name = "main", '\000' <repeats 11 times>, stack = 0xc000eebc "\036▒\002▒",
+  priority = 31, allelem = {prev = 0xc00347b0, next = 0xc0103020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #1: 0xc0103000 {tid = 2, status = THREAD_BLOCKED,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc000e020, next = 0xc0105020}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+pintos-debug: dumplist #2: 0xc0105000 {tid = 4, status = THREAD_RUNNING,
+  name = "second yielder\000", stack = 0xc0105fd4 "", priority = 31,
+  allelem = {prev = 0xc0103020, next = 0xc00347b8}, elem = {prev = 0xc00347a0,
+    next = 0xc000e028}, magic = 3446325067}
+(gdb) c
+Continuing.
+
+Breakpoint 2, timer_interrupt (args=0xc0103f60) at ../../devices/timer.c:173
+173       ticks++;
+(gdb) dumplist &all_list thread allelem
+pintos-debug: dumplist #0: 0xc0103000 {tid = 2, status = THREAD_RUNNING,
+  name = "idle", '\000' <repeats 11 times>, stack = 0xc0103f34 "",
+  priority = 0, allelem = {prev = 0xc00347b0, next = 0xc00347b8}, elem = {
+    prev = 0xc00347a0, next = 0xc00347a8}, magic = 3446325067}
+(gdb)
+
+
+
+
+			     ALARM CLOCK
+			     ===========
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+thread.h -->
+	Added a integer field for which the thread has to sleep:
+		int64_t timer_for_sleep;
+
+	Added a struct that represent the threads in the list of all
+	the threads. 
+		struct list_elem prt_sleep_list;
+
+thread.c -->
+	Added a static struct list, for creating the list for all
+	the slept threads
+		struct list sleep_all_thread_list;
+
+			
+	
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe what happens in a call to timer_sleep(),
+>> including the effects of the timer interrupt handler.
+   Answer:
+
+	void timer_sleep (int64_t ticks)
+		The main process that this function does is that it puts the 
+		the thread to sleep in this function itself.
+
+void timer_init(void)
+		Changed, added initialization of all the sleep threads
+			list_init(&sleep_all_thread_list); 
+
+	It will first decide the wake up time for the thread.Then assign the wake 
+	up time to the thread's timer_for_sleep.Then after disabling the interrupts,
+	push the thread in the sleep_all_thread_list and block it.
+	The timer interrupt handler [void timer_init(void) function in timer.c] 
+	will scan the sleep_all_thread_list at each tick and wake up those threads
+	whose wake up time has been reached.i.e no of global ticks is greater than wake up time.		
+
+>> A3: What steps are taken to minimize the amount of time spent in
+>> the timer interrupt handler?
+   Answer:
+
+	Whenever the process of adding the thread to the sleep_all_thread_list and then
+	blocking it begins,we disable all the timer interrupts.So the amount of time spent 
+	in the timer interrupt handler is very less when a thread is in the sleep_all_thread_list. 
+
+---- SYNCHRONIZATION ----
+
+>> A4: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+   Answer:
+
+	Since all the interrupts are disabled when any thread is beign added to the 
+	sleep_all_thread_list and then blocked,the race condition won't take place 
+	when multiple threads call timer_sleep() simultaneously.
+
+
+>> A5: How are race conditions avoided when a timer interrupt occurs
+>> during a call to timer_sleep()?
+   Answer:
+	
+	Since before beigining the process, the interrupts are disabled.So the
+	race conditions that may occur when a timer interrupt occurs during a call to
+	timer_sleep() will be avoided.
+
+
+---- RATIONALE ----
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+   Answer:
+
+	We choosed this design that maintains a sleep list for all the threads that are
+	sleeping currently.
+	Also once the thread is inserted into this list it will be blocked till its wake up time.
+	Once the wake up time of the thread has arrived ,remove the thread from the sleep list and
+	unblock it.Other thing that we could have done is used semaphores instead of blocking the 
+	thread when inserted to a sleep list.
+	Our design implementation of blocking and unblocking is simpler than the above mentioned way. 
+
+	
+			 PRIORITY SCHEDULING
+			 ===================
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+thread.h ----->
+
+	Change in struct thread 
+		struct list_elem donations_takenlist;
+		(a list which keeps track of all the donations the thread has taken)
+		
+		struct list_elem donations_givenlist;
+		(a list which keeps track of all the donations a thread has given)
+
+	Added struct donation
+		-- Keeps a track of all the donations.
+
+		struct members- 
+			 struct thread *take_donation;
+			 (maintains a record of thread whom it has given donation to)
+			 
+			 struct list_elem donate_this_elem;
+			 (maintains a list of all the indexes)
+
+			 struct lock *lock;
+			 (It will assign locks to a thread.)
+			
+			 int donated_pri;	
+			 (type integer which when set indicates donated the priority)
+------------------------------------------------------------------------------------------------
+
+>> B2: Explain the data structure used to track priority donation.
+>> Use ASCII art to diagram a nested donation.  (Alternately, submit a
+>> .png file.)
+
+
+  +--------------------+               +-------------------+
+  |H, M, L are threads |               |H needs a lock from|
+  |with high, medium & |+------------->|M which inturn     |
+  |low priorities, as  |               |needs lock from L  |
+  |H=10, M=9, and L=8  |               +-------------------+
+  +--------------------+
+
+In case of nested conditions:
+  +------------------+                +------------------+          +------------------+
+  |H thread          |                |M thread          |          |L thread          |
+  |donation_takelist |                |donation_takelist |          |donation_takelist |
+  |  +---------+     |                |   +----------+   |          |  +----------+    |
+  |  | NULL    |     |                |   |M=10      |   |          |  |L=10      |    |
+  |  +---------+     |+-------------->|   +----------+   |+-------->|  +----------+    |
+  |donation_givenlist|                |donation_givenList|          |donation_givenlist|
+  |  +----------+    |                |   +----------+   |          |  +-----------+   |
+  |  |H=10 to M|     |                |   |M=10 to L||   |          |  |NULL       |   |
+  |  +----------+    |                |   +----------+   |          |  +-----------+   |
+  |                  |                |                  |          |                  |
+  |                  |                |                  |          |                  |
+  +------------------+                +------------------+          +------------------+
+
+
+ Follow of priority donation: 
+ Consider a situation of two threads having priority high and low p(H) and p(L)
+ repectively. Thread L has a lock that H requires.
+ +---------------------+    +--------------+      +-------------+       +-----------------+
+ |Priority of thread H |    |if p(H) > p(L)|      |H donates its|       |L goes into      |
+ |p(H) is compared with|+-->|              |+---->|priority to L|+----->|running state and|
+ |thread L p(L)        |    +--------------+      +-------------+       |releases the lock|
+ |                     |                                                +-----------------+
+ +---------------------+                                                         +
+                                                                                 |
+                                                                      +----------v--------+
+                                                                      |H goes into running|
+                                                                      | state and acquires|
+                                                                      |acquires the lock  |
+                                                                      +-------------------+
+
+
+
+---- ALGORITHMS ----
+
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+	In order to achieve this we have edited and created the following functions:
+	
+	void
+ sema_up (struct semaphore *sema) 
+		Changed,this function will check for the threads that are waiting in the semaphore.
+	   
+		If the thread that is waiting in the semaphore waiting thread list has priority
+ greater than 
+		the currently running thread,unblock it and yield that thread
+
+	int unblock_max_priority_thd(struct list_elem *cur,int max_val,struct semaphore *sema)
+		Created this function which will scan the list of waiting threads in semaphores
+,
+		finds the thread that has max priority and if that thread has priority 	greater 
+than
+		the one that is currently running,then remove it from the waitlist and 
+unblock it.
+
+
+	void
+ cond_signal (struct condition *cond, struct lock *lock UNUSED)
+		Changed,this function checks if the waiting threads are present in the condition struct, 
+		if yes then it will get the current max priority and calls a function that will 
+		to iterare over the list.
+
+	void proceed_release(int max_val,struct list_elem *cur,struct condition *cond)
+	
+		Create this function that scans the waiting threads in the waiter list inside the 
+		condition struct,check the list of 
+semaphores and the semaphore who has highest 
+		priority waiting thread will 
+change its state to sema_up.
+
+	These functions enusre that the highest priorirty thread waiting for a lock,semaphore or
+	condition variable wake up first.	
+
+>> B4: Describe the sequence of events when a call to lock_acquire()
+>> causes a priority donation.  How is nested donation handled?
+
+	The sequence of events when a call to lock_acquire is made are:
+
+	void
+ lock_acquire (struct lock *lock)
+		Changed, When a call to lock_acquire is made,interrupts are disable and 
+		check_for_donation function will be called.
+
+	void check_for_donation(struct lock *lock)
+		Created this function that checks if the thread with the max priority currently 
+		has the lock or not.If not,then it will call the function donation_of_priority 
+		to donate priority to the thread that has the lock.
+
+	
+	void donation_of_priority(struct thread *cur_t,struct thread *lholder,struct lock *lock)
+		Created this function where current thread donates its priority to the lock holder 
+		thread i.e the thread who is currently holding the lock.Also it updates the lists
+		donation_givenlist and donation_takenlist and calls nested_donation_check function 
+		to check for exitence of nested donations.
+	
+	void nested_donation_check(struct thread *cur_t,struct thread *lholder,struct lock *lock)
+		Created this function that checks for nested donations and will donate the priority to 
+		all the children threads of the lock holder "lholder" if they exist by calling the
+		donation_of_priority function.
+
+	
+
+>> B5: Describe the sequence of events when lock_release() is called
+>> on a lock that a higher-priority thread is waiting for.
+
+	The sequence of events when the lock_release() is called on a lock that a higher-priority
+	thread is waiting  for are:
+
+	void
+ lock_release (struct lock *lock) 
+		Changed, now before releasing the lock, take thread off from the 
+lists of donations 
+		given and taken which is related to the lock to be released.
+		So call function delete_donations_takenlist() and delete_donations_givenlist() to make
+		che changes.
+		Once the thread is removed from those lists,it calls sema_up() function.
+		It will get back its base prioirty.Then again the list of waiting threads will be 
+		scanned and the thread that has highest priority will be given the lock and
+		the sema value will be incremented.	
+
+	void delete_donations_takenlist(struct lock *lock)
+		 This function will check for the list_elem that are currently in the donation_takenlist 
+		 and are related to the lock that has to be released.
+If such list_elem exist,then they 
+		 have to be removed from the list.
+
+	void delete_donations_givenlist(struct list_elem *cur,struct lock *lock)
+		This function will check for the list_elem that are currently in the
+ donation_givenlist 
+		and are related to the lock that has to be released.If such list_elem exist,then they 
+		have to be removed from the list.
+	
+	
+---- SYNCHRONIZATION ----
+
+>> B6: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.  Can you use a lock to avoid
+>> this race?
+	
+	The thread_set_priority() function will set the priority of the current thread to the given value.
+	The potential race condition may arise when the thread of same prioirty (t2) as the thread (t1) that has already entered
+	the function interrupts before t1 could set its priority to given value.When this happens t1 will never be able to set its
+	prioirty to the given value.
+	In the opposite situation i.e when t2 will send an interrupt when t1 has changed its prioirty,t2 will again have priority 
+	lower than t1 so it will not be able to set its new priority.
+	In order to avoid this race condition, we have diabled the interrupts.So when t1 is setting its priority t2 won't be able 
+	to interrupt and vice versa.
+	Yes locks also can be used instead of disabling the interrupts.
+	
+
+
+---- RATIONALE ----
+
+>> B7: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+	
+	In our design,we have a seperate stucture that keeps track of the donations.We maintained lists 
+	of donations taken and donations given.	This simplified our design to keep track of threads base
+	prioirites,given priorities and taken priorities.
+
+	Other design considerations that we made were:
+	- Keeping all the donation details in a single thread structure instead of creating a new one.But this made the code 
+	  complex when keeping track of priorities and donations for nested donations.
+
+	- keeping a variable inside the thread structure indicating whether a priority has been donated,or donation has 
+	  been taken or nothing of the above.But this made it difficult when nested priority donations had to be taken care of.
+	  We realised that one variable won't suffice and there is a need for 2 lists donation given and taken list.
+		
+	
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
